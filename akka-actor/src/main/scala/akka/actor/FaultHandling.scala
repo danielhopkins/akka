@@ -427,16 +427,17 @@ case class AllForOneStrategy(
 case class OneForOneStrategy(
   maxNrOfRetries: Int = -1,
   withinTimeRange: Duration = Duration.Inf,
+  escalateOnRestartFailed: Boolean = false,
   override val loggingEnabled: Boolean = true)(val decider: SupervisorStrategy.Decider)
   extends SupervisorStrategy {
 
-  def this(maxNrOfRetries: Int, withinTimeRange: Duration, decider: SupervisorStrategy.JDecider, loggingEnabled: Boolean) =
+  def this(maxNrOfRetries: Int, withinTimeRange: Duration, escalateOnRestartFailed: Boolean, decider: SupervisorStrategy.JDecider, loggingEnabled: Boolean) =
     this(maxNrOfRetries, withinTimeRange, loggingEnabled)(SupervisorStrategy.makeDecider(decider))
 
-  def this(maxNrOfRetries: Int, withinTimeRange: Duration, decider: SupervisorStrategy.JDecider) =
+  def this(maxNrOfRetries: Int, withinTimeRange: Duration, escalateOnRestartFailed: Boolean, decider: SupervisorStrategy.JDecider) =
     this(maxNrOfRetries, withinTimeRange)(SupervisorStrategy.makeDecider(decider))
 
-  def this(maxNrOfRetries: Int, withinTimeRange: Duration, trapExit: JIterable[Class[_ <: Throwable]]) =
+  def this(maxNrOfRetries: Int, withinTimeRange: Duration, escalateOnRestartFailed: Boolean, trapExit: JIterable[Class[_ <: Throwable]]) =
     this(maxNrOfRetries, withinTimeRange)(SupervisorStrategy.makeDecider(trapExit))
 
   /*
@@ -453,6 +454,8 @@ case class OneForOneStrategy(
   def processFailure(context: ActorContext, restart: Boolean, child: ActorRef, cause: Throwable, stats: ChildRestartStats, children: Iterable[ChildRestartStats]): Unit = {
     if (restart && stats.requestRestartPermission(retriesWindow))
       restartChild(child, cause, suspendFirst = false)
+    else if(escalateOnRestartFailed)
+      throw cause
     else
       context.stop(child) //TODO optimization to drop child here already?
   }
