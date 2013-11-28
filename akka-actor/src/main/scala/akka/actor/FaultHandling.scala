@@ -454,9 +454,10 @@ case class OneForOneStrategy(
   def processFailure(context: ActorContext, restart: Boolean, child: ActorRef, cause: Throwable, stats: ChildRestartStats, children: Iterable[ChildRestartStats]): Unit = {
     if (restart && stats.requestRestartPermission(retriesWindow))
       restartChild(child, cause, suspendFirst = false)
-    else if(escalateOnRestartFailed)
+    else if(escalateOnRestartFailed) {
+      println(s"Out of chances, escalating, throwing ${cause}")
       throw cause
-    else
+    } else
       context.stop(child) //TODO optimization to drop child here already?
   }
 }

@@ -28,6 +28,13 @@ object ActorLifeCycleSpec {
     def receive = { case "status" ⇒ sender ! message("OK") }
   }
 
+  class EscalationSupervisor(sendTo: ActorRef) extends Actor {
+    def receive = {
+      case p: Props      => sender ! context.actorOf(p)
+      case m => println(s"Got a message ${m}")
+//      case t: Terminated => sendTo ! "escalated"
+    }
+  }
 }
 
 @org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
@@ -149,6 +156,28 @@ class ActorLifeCycleSpec extends AkkaSpec("akka.actor.serialize-messages=off") w
       }
       a ! "hello"
       expectMsg(42)
+    }
+
+    "escalate to supervisor when failing to restart" in {
+        val id = newUuid().toString
+        val highestSupervisor = system.actorOf(Props(classOf[EscalationSupervisor], testActor))
+        val lowSupervisorProps = Props(classOf[Supervisor], OneForOneStrategy(maxNrOfRetries = 1, withinTimeRange = 10.seconds ,escalateOnRestartFailed = true)(List(classOf[Exception])))
+        val lowSupervisor = Await.result((highestSupervisor ? lowSupervisorProps).mapTo[ActorRef], timeout.duration)
+        val gen = new AtomicInteger(0)
+        val restarterProps = Props(classOf[LifeCycleTestActor], testActor, id, gen)
+        val restarter = Await.result((lowSupervisor ? restarterProps).mapTo[ActorRef], timeout.duration)
+
+        expectMsg(("preStart", id, 0))
+        restarter ! Kill
+        expectMsg(("postStop", id, 0))
+        expectMsg(("preStart", id, 1))
+        restarter ! "status"
+        expectMsg(("OK", id, 1))
+        restarter ! Kill
+        expectMsg(("postStop", id, 1))
+        expectMsg("escalated")
+
+        system.stop(highestSupervisor)
     }
   }
 
